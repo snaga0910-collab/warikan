@@ -1,36 +1,116 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 💸 わりかん精算
 
-## Getting Started
+旅行や飲み会で立て替えた金額を入れるだけ。**誰が誰にいくら払えばいいか**を、**送金回数が最小になる形**で出します。結果はURLでメンバー全員に共有できます。
 
-First, run the development server:
+## 誰のため / なぜ作ったか
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+4人の旅行で、立替がバラバラに発生しました。
+
+```
+A 10,000円 ／ B 7,000円 ／ C 4,000円 ／ D 14,000円（立替は7〜8件）
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+このとき困ったのが「**誰が誰にいくら渡せば均等になるか分からない**」こと。仕方なく**立替1件ごとに割り算して、その都度その人に払う**方法をとりました。
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```
+7件 × 3人 ＝ 最大21回の受け渡し
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+しかもPayPayと現金が混ざり、何を渡したか分からなくなりました。
 
-## Learn More
+でも各自の過不足を計算してまとめれば、**同じ精算が3回で終わります**。
 
-To learn more about Next.js, take a look at the following resources:
+| 人 | 立替 | 過不足（1人8,750円） |
+|---|---|---|
+| A | 10,000 | +1,250（受け取る） |
+| B | 7,000 | −1,750（払う） |
+| C | 4,000 | −4,750（払う） |
+| D | 14,000 | +5,250（受け取る） |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```
+C → D  4,750円
+B → D    500円
+B → A  1,250円
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+**人間にはこの組み合わせが計算できない。** だから何十回もの個別送金になる——そこを自動化しました。
 
-## Deploy on Vercel
+## スクリーンショット
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+| 作成画面 | 精算結果 |
+|---|---|
+| （ここにトップ画面のスクショ） | （ここに精算結果のスクショ） |
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 主な機能
+
+| 機能 | 説明 |
+|---|---|
+| グループ作成 | 旅行名とメンバー（2〜10人）を入力するだけ |
+| 立替の記録 | 「誰が・いくら・何に」を選んで追加。入力ミスは削除できる |
+| 過不足の計算 | 合計・1人あたり・各自の受取/支払を自動計算 |
+| **最小回数の精算** | 送金回数が**人数−1回以下**になる組み合わせを算出 |
+| URL共有 | グループ固有のURLを送れば、全員が同じ結果を見られる |
+| 文章コピー | 精算結果をそのままLINEに貼れる形でコピー |
+
+**あえてやらないこと**：送金機能そのもの、ログイン、レシート読み取り、家計簿。
+目的は「いくら渡せばいいか分かること」であり、機能を増やすと幹事がその場でサッと使えなくなるため。
+
+## 技術スタック
+
+| 分類 | 使用技術 |
+|---|---|
+| フロントエンド | Next.js 16（App Router）/ React 19 / TypeScript |
+| スタイル | Tailwind CSS v4 |
+| データベース | Supabase（PostgreSQL）※RLS有効 |
+| テスト | Vitest |
+| ホスティング | Vercel |
+
+すべて**無料枠**で動作します。
+
+## 仕組み
+
+```
+グループ作成 → 立替を追加 → 各自の「立替 − 負担額」を計算
+                                    │
+              最も多く払う人と、最も多く受け取る人を順に相殺（貪欲法）
+                                    │
+                    送金回数が最小の精算リストを表示 → URLで共有
+```
+
+### 設計上のポイント
+
+- **計算は画面から切り離した純粋関数**（[src/lib/settle.ts](src/lib/settle.ts)）にして、**Vitestでテスト**している。1円でもズレたら信用されないため
+- **金額はすべて整数（円）で計算**し、小数による誤差を出さない。割り切れない端数は1円単位で配分し、合計が必ず一致する
+- **RLSを有効にし、ポリシーを作らない**。公開キーからは一切読み書きできず、DB操作はサーバー側の秘密キー経由のみ
+- 共有URLは**推測できないUUID**。保存するのは**メンバー名と金額だけ**で、氏名フルネームや連絡先は扱わない
+
+## セットアップ
+
+```bash
+npm install
+cp .env.example .env.local   # 値を自分のものに置き換える
+npm run dev
+```
+
+テーブルは [supabase/schema.sql](supabase/schema.sql) を Supabase の SQL Editor で実行して作成します。
+
+### 環境変数
+
+| 変数 | 内容 |
+|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase の Project URL |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase の公開キー |
+| `SUPABASE_SECRET_KEY` | Supabase の秘密キー（サーバー専用） |
+
+### テスト
+
+```bash
+npx vitest run
+```
+
+計算の正しさ（端数処理・精算後に全員0になること・送金回数が人数−1以下であること）を検証します。
+
+## ドキュメント
+
+- [requirements.md](requirements.md) — 要件定義書
+- [CLAUDE.md](CLAUDE.md) — Claude Code 向けのプロジェクト固有ルール
