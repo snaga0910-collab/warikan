@@ -76,6 +76,8 @@ export async function addExpense(formData: FormData) {
   }
 
   revalidatePath(`/g/${groupId}`);
+  // 同じ人の立替を続けて入れやすいよう、選んだ人を次回も選択済みにしておく
+  redirect(`/g/${groupId}?last=${payerId}`);
 }
 
 /** 入力ミスを消せるようにする */

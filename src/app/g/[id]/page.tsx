@@ -16,10 +16,10 @@ export default async function GroupPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; last?: string }>;
 }) {
   const { id } = await params;
-  const { error } = await searchParams;
+  const { error, last } = await searchParams;
 
   const supabase = getSupabase();
 
@@ -87,6 +87,10 @@ export default async function GroupPage({
       {/* 立替の追加 */}
       <section className="rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
         <h2 className="font-semibold text-slate-900 dark:text-slate-100">立替を追加</h2>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          <strong>合計せずに1件ずつ</strong>追加してください（例：ガソリン 4,850円）。
+          同じ人の分は自動で合算されます
+        </p>
         <form action={addExpense} className="mt-3 flex flex-col gap-3">
           <input type="hidden" name="group_id" value={id} />
 
@@ -95,7 +99,8 @@ export default async function GroupPage({
             <select
               name="payer_id"
               required
-              defaultValue=""
+              // 直前に選んだ人を選択済みにして、同じ人の立替を続けて入れやすくする
+              defaultValue={last && members.some((m) => m.id === last) ? last : ""}
               className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
             >
               <option value="" disabled>
