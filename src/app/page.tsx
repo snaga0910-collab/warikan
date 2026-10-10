@@ -1,4 +1,5 @@
 import { SubmitButton } from "@/components/submit-button";
+import { RecentGroups } from "@/components/recent-groups";
 import { createGroup } from "./actions";
 
 export default async function Home({
@@ -85,6 +86,8 @@ export default async function Home({
           作成する
         </SubmitButton>
       </form>
+
+      <RecentGroups />
 
       <section className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-600 dark:bg-slate-900 dark:text-slate-300">
         <p className="font-medium">こんな時に使えます</p>

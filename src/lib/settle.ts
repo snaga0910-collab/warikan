@@ -12,6 +12,8 @@ export type Member = {
 export type Expense = {
   payerId: string;
   amount: number; // 円（整数・正の数）
+  /** この支払いを分担する人。未指定・空なら「全員」とみなす */
+  participantIds?: string[] | null;
 };
 
 export type Balance = {
@@ -31,8 +33,8 @@ export type Transfer = {
 };
 
 /**
- * 1人あたりの負担額を求める。
- * 割り切れない端数は、先頭のメンバーから1円ずつ上乗せする。
+ * 1件の金額を人数で分けたときの、1人あたりの負担額を求める。
+ * 割り切れない端数は、先頭の人から1円ずつ上乗せする。
  * 返り値の合計は必ず total と一致する。
  */
 export function computeShares(total: number, memberCount: number): number[] {
@@ -46,23 +48,43 @@ export function computeShares(total: number, memberCount: number): number[] {
   );
 }
 
-/** 各メンバーの「立て替えた額 − 負担額」を求める */
+/**
+ * 各メンバーの「立て替えた額 − 負担額」を求める。
+ *
+ * 負担額は支払いごとに計算する。参加者が指定されていればその人たちで分け、
+ * 指定が無ければ全員で分ける（例：「この夕食はカスミ不参加」に対応するため）。
+ */
 export function computeBalances(members: Member[], expenses: Expense[]): Balance[] {
-  const total = expenses.reduce((sum, e) => sum + e.amount, 0);
-  const shares = computeShares(total, members.length);
+  const order = new Map(members.map((m, i) => [m.id, i]));
+  const paidBy = new Map<string, number>();
+  const shareOf = new Map<string, number>();
 
-  return members.map((member, i) => {
-    const paid = expenses
-      .filter((e) => e.payerId === member.id)
-      .reduce((sum, e) => sum + e.amount, 0);
+  for (const member of members) {
+    paidBy.set(member.id, 0);
+    shareOf.set(member.id, 0);
+  }
 
-    return {
-      memberId: member.id,
-      name: member.name,
-      paid,
-      share: shares[i] ?? 0,
-      diff: paid - (shares[i] ?? 0),
-    };
+  for (const expense of expenses) {
+    if (paidBy.has(expense.payerId)) {
+      paidBy.set(expense.payerId, (paidBy.get(expense.payerId) ?? 0) + expense.amount);
+    }
+
+    // 参加者は、実在するメンバーだけに絞り、メンバーの並び順にそろえる
+    const specified = (expense.participantIds ?? []).filter((id) => order.has(id));
+    const targets = (specified.length > 0 ? specified : members.map((m) => m.id)).sort(
+      (a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0),
+    );
+
+    const shares = computeShares(expense.amount, targets.length);
+    targets.forEach((id, i) => {
+      shareOf.set(id, (shareOf.get(id) ?? 0) + (shares[i] ?? 0));
+    });
+  }
+
+  return members.map((member) => {
+    const paid = paidBy.get(member.id) ?? 0;
+    const share = shareOf.get(member.id) ?? 0;
+    return { memberId: member.id, name: member.name, paid, share, diff: paid - share };
   });
 }
 
@@ -73,7 +95,6 @@ export function computeBalances(members: Member[], expenses: Expense[]): Balance
  * 1回の相殺で必ず誰か1人の過不足が0になるため、送金回数は「人数−1回」以下に収まる。
  */
 export function settle(balances: Balance[]): Transfer[] {
-  // 元の配列を壊さないよう複製して扱う
   const debtors = balances
     .filter((b) => b.diff < 0)
     .map((b) => ({ ...b, remaining: -b.diff }))
@@ -110,6 +131,11 @@ export function settle(balances: Balance[]): Transfer[] {
   }
 
   return transfers;
+}
+
+/** 送金1件を見分けるための文字列（送金済みチェックの保存・照合に使う） */
+export function transferKey(t: Pick<Transfer, "fromId" | "toId" | "amount">): string {
+  return `${t.fromId}:${t.toId}:${t.amount}`;
 }
 
 /** 精算結果を、LINEなどにそのまま貼れる文章にする */

@@ -35,3 +35,23 @@ create index if not exists wk_expenses_group_idx on public.wk_expenses(group_id)
 alter table public.wk_groups enable row level security;
 alter table public.wk_members enable row level security;
 alter table public.wk_expenses enable row level security;
+
+-- 以下は v1.0 で追加したもの
+
+-- 削除を「元に戻せる」ようにする
+alter table public.wk_expenses add column if not exists deleted_at timestamptz;
+
+-- 一部の人だけの支払いに対応する（空なら全員が対象）
+alter table public.wk_expenses add column if not exists participant_ids uuid[];
+
+-- 送金が済んだかどうかを保存する
+create table if not exists public.wk_settlement_paid (
+  id uuid primary key default gen_random_uuid(),
+  group_id uuid not null references public.wk_groups(id) on delete cascade,
+  from_id uuid not null,
+  to_id uuid not null,
+  amount int not null,
+  created_at timestamptz not null default now(),
+  unique (group_id, from_id, to_id, amount)
+);
+alter table public.wk_settlement_paid enable row level security;

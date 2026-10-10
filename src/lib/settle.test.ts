@@ -115,3 +115,56 @@ describe("精算の性質（どんな入力でも守られるべきこと）", (
     expect(settle(computeBalances(members, expenses))).toHaveLength(0);
   });
 });
+
+describe("一部の人だけの支払い", () => {
+  it("参加者を指定すると、その人たちだけで分担する", () => {
+    // Aが払った6,000円は、A・Bの2人分（＝1人3,000円）
+    const balances = computeBalances(members, [
+      { payerId: "a", amount: 6000, participantIds: ["a", "b"] },
+    ]);
+
+    expect(balances.map((b) => b.share)).toEqual([3000, 3000, 0, 0]);
+    expect(balances.map((b) => b.diff)).toEqual([3000, -3000, 0, 0]);
+    expect(settle(balances)).toEqual([
+      { fromId: "b", fromName: "B", toId: "a", toName: "A", amount: 3000 },
+    ]);
+  });
+
+  it("参加者の指定が無い支払いは、これまで通り全員で分担する", () => {
+    const withNull = computeBalances(members, [{ payerId: "a", amount: 4000, participantIds: null }]);
+    const withEmpty = computeBalances(members, [{ payerId: "a", amount: 4000, participantIds: [] }]);
+    const without = computeBalances(members, [{ payerId: "a", amount: 4000 }]);
+
+    expect(withNull).toEqual(without);
+    expect(withEmpty).toEqual(without);
+    expect(without.map((b) => b.share)).toEqual([1000, 1000, 1000, 1000]);
+  });
+
+  it("全員参加と一部参加が混ざっても、精算後は全員ちょうど0になる", () => {
+    const balances = computeBalances(members, [
+      { payerId: "a", amount: 50000 }, // 全員
+      { payerId: "b", amount: 4801, participantIds: ["b", "c", "d"] }, // 端数あり・3人
+      { payerId: "c", amount: 777, participantIds: ["a", "c"] },
+      { payerId: "d", amount: 18500 }, // 全員
+    ]);
+
+    // 負担額の合計は、立替の合計と必ず一致する
+    const totalPaid = balances.reduce((s, b) => s + b.paid, 0);
+    const totalShare = balances.reduce((s, b) => s + b.share, 0);
+    expect(totalShare).toBe(totalPaid);
+
+    const after = new Map(balances.map((b) => [b.memberId, b.diff]));
+    for (const t of settle(balances)) {
+      after.set(t.fromId, (after.get(t.fromId) ?? 0) + t.amount);
+      after.set(t.toId, (after.get(t.toId) ?? 0) - t.amount);
+    }
+    for (const v of after.values()) expect(v).toBe(0);
+  });
+
+  it("存在しないメンバーが指定に混ざっていても無視される", () => {
+    const balances = computeBalances(members, [
+      { payerId: "a", amount: 1000, participantIds: ["a", "b", "zzz"] },
+    ]);
+    expect(balances.map((b) => b.share)).toEqual([500, 500, 0, 0]);
+  });
+});

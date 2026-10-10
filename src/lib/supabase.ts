@@ -24,6 +24,17 @@ export type ExpenseRow = {
   payer_id: string;
   amount: number;
   note: string | null;
+  participant_ids: string[] | null; // 空・null なら全員が対象
+  deleted_at: string | null; // 論理削除（元に戻せるようにするため）
+  created_at: string;
+};
+
+export type PaidRow = {
+  id: string;
+  group_id: string;
+  from_id: string;
+  to_id: string;
+  amount: number;
   created_at: string;
 };
 
